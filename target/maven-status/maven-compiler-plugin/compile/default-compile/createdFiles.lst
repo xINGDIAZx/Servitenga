@@ -1,0 +1,6 @@
+com/example/servitenga/model/Envio.class
+com/example/servitenga/repository/EnvioRepository.class
+com/example/servitenga/service/EnvioService.class
+com/example/servitenga/dto/EnvioRequestDTO.class
+com/example/servitenga/controller/EnvioController.class
+com/example/servitenga/ServitengaApiApplication.class
