@@ -20,13 +20,20 @@ public class EnvioController {
         this.service = service;
     }
 
-    // GET - listar todos
+    // POST - Crear un nuevo envio (201 Created)
+    @PostMapping
+    public ResponseEntity<Envio> crear(@Valid @RequestBody EnvioRequestDTO dto) {
+        Envio creado = service.crear(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(creado);
+    }
+
+    // GET - Listar todos los envios (200 OK)
     @GetMapping
     public ResponseEntity<List<Envio>> listarTodos() {
         return ResponseEntity.ok(service.listarTodos());
     }
 
-    // GET con PathVariable - buscar por id
+    // GET - Buscar por id (200 OK o 404 Not Found)
     @GetMapping("/{id}")
     public ResponseEntity<Envio> buscarPorId(@PathVariable Long id) {
         return service.buscarPorId(id)
@@ -34,7 +41,7 @@ public class EnvioController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // GET con RequestParam - filtrar por ciudad o estado
+    // GET - Busqueda personalizada por ciudad o estado
     @GetMapping("/buscar")
     public ResponseEntity<List<Envio>> buscar(
             @RequestParam(required = false) String ciudad,
@@ -49,10 +56,21 @@ public class EnvioController {
         return ResponseEntity.badRequest().build();
     }
 
-    // POST con RequestBody + DTO
-    @PostMapping
-    public ResponseEntity<Envio> crear(@Valid @RequestBody EnvioRequestDTO dto) {
-        Envio creado = service.crear(dto);
-        return ResponseEntity.status(HttpStatus.CREATED).body(creado);
+    // PUT - Actualizar un envio existente (200 OK o 404 Not Found)
+    @PutMapping("/{id}")
+    public ResponseEntity<Envio> actualizar(@PathVariable Long id,
+                                            @Valid @RequestBody EnvioRequestDTO dto) {
+        return service.actualizar(id, dto)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    // DELETE - Eliminar un envio (204 No Content o 404 Not Found)
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> eliminar(@PathVariable Long id) {
+        if (service.eliminar(id)) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.notFound().build();
     }
 }
