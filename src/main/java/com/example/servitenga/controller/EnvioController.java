@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -36,9 +37,9 @@ public class EnvioController {
     // GET - Buscar por id (200 OK o 404 Not Found)
     @GetMapping("/{id}")
     public ResponseEntity<Envio> buscarPorId(@PathVariable Long id) {
-        return service.buscarPorId(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        Envio envio = service.buscarPorId(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Envío no encontrado"));
+        return ResponseEntity.ok(envio);
     }
 
     // GET - Busqueda personalizada por ciudad o estado
@@ -47,22 +48,22 @@ public class EnvioController {
             @RequestParam(required = false) String ciudad,
             @RequestParam(required = false) String estado) {
 
-        if (ciudad != null) {
+        if (ciudad != null && !ciudad.isBlank()) {
             return ResponseEntity.ok(service.buscarPorCiudad(ciudad));
         }
-        if (estado != null) {
+        if (estado != null && !estado.isBlank()) {
             return ResponseEntity.ok(service.buscarPorEstado(estado));
         }
-        return ResponseEntity.badRequest().build();
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Debe proporcionar el parámetro 'ciudad' o 'estado'");
     }
 
     // PUT - Actualizar un envio existente (200 OK o 404 Not Found)
     @PutMapping("/{id}")
     public ResponseEntity<Envio> actualizar(@PathVariable Long id,
                                             @Valid @RequestBody EnvioRequestDTO dto) {
-        return service.actualizar(id, dto)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        Envio actualizado = service.actualizar(id, dto)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Envío no encontrado"));
+        return ResponseEntity.ok(actualizado);
     }
 
     // DELETE - Eliminar un envio (204 No Content o 404 Not Found)
@@ -71,6 +72,6 @@ public class EnvioController {
         if (service.eliminar(id)) {
             return ResponseEntity.noContent().build();
         }
-        return ResponseEntity.notFound().build();
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Envío no encontrado");
     }
 }

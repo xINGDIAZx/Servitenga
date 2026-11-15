@@ -13,6 +13,7 @@
 CREATE DATABASE /*!32312 IF NOT EXISTS*/ `servitenga` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
 
 USE `servitenga`;
+DROP TABLE IF EXISTS `track_envios`;
 DROP TABLE IF EXISTS `envios`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -34,10 +35,9 @@ CREATE TABLE `envios` (
 
 LOCK TABLES `envios` WRITE;
 /*!40000 ALTER TABLE `envios` DISABLE KEYS */;
-INSERT INTO `envios` VALUES (1,'Cali','Bogota','Ana Gomez','REGISTRADO','2026-10-31 19:40:20.859629','2026-10-31','LOG-2026-001',3.4,'Juan Perez');
+INSERT INTO `envios` VALUES (1,'Medellin','Pereira','Carlos Ramirez','EN_RUTA','2026-11-10 08:30:00.000000','2026-11-10','LOG-2026-001',12.5,'Distribuidora Cafetera S.A.S');
 /*!40000 ALTER TABLE `envios` ENABLE KEYS */;
 UNLOCK TABLES;
-DROP TABLE IF EXISTS `track_envios`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `track_envios` (
@@ -46,13 +46,18 @@ CREATE TABLE `track_envios` (
   `fecha_registro` datetime(6) NOT NULL,
   `latitud` double NOT NULL,
   `longitud` double NOT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_track_envio_id` (`envio_id`),
+  CONSTRAINT `fk_track_envio` FOREIGN KEY (`envio_id`) REFERENCES `envios` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 LOCK TABLES `track_envios` WRITE;
 /*!40000 ALTER TABLE `track_envios` DISABLE KEYS */;
-INSERT INTO `track_envios` VALUES (1,1,'2026-10-31 19:40:20.916116',4.711,-74.0721),(2,1,'2026-10-31 19:40:20.934051',4.3,-75.2),(3,1,'2026-10-31 19:40:20.949126',3.4516,-76.532);
+INSERT INTO `track_envios` VALUES
+(1,1,'2026-11-10 08:00:00.000000',4.8133,-75.6961),
+(2,1,'2026-11-10 10:15:00.000000',5.0689,-75.5174),
+(3,1,'2026-11-10 13:45:00.000000',6.2442,-75.5812);
 /*!40000 ALTER TABLE `track_envios` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;

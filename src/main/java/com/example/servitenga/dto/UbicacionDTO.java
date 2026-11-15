@@ -3,9 +3,9 @@ package com.example.servitenga.dto;
 import jakarta.validation.constraints.NotNull;
 
 /**
- * DTO para actualizar la posicion actual (tracking) de un envio.
+ * DTO para registrar la posicion (tracking) de un envio.
  */
 public record UbicacionDTO(
-    @NotNull Double latitud,
-    @NotNull Double longitud
+    @NotNull(message = "La latitud es obligatoria") Double latitud,
+    @NotNull(message = "La longitud es obligatoria") Double longitud
 ) {}

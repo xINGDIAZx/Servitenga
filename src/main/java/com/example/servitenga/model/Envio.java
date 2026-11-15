@@ -1,9 +1,12 @@
 package com.example.servitenga.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "envios")
@@ -40,6 +43,11 @@ public class Envio {
     @Column(name = "fecha_actualizacion")
     private LocalDateTime fechaActualizacion;
 
+    // Relacion JPA: un envio tiene muchos puntos de tracking (recorrido)
+    @OneToMany(mappedBy = "envio", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
+    private List<TrackEnvio> tracks = new ArrayList<>();
+
     // Constructor sin argumentos (requerido por JPA)
     public Envio() {
     }
@@ -74,4 +82,7 @@ public class Envio {
 
     public LocalDateTime getFechaActualizacion() { return fechaActualizacion; }
     public void setFechaActualizacion(LocalDateTime fechaActualizacion) { this.fechaActualizacion = fechaActualizacion; }
+
+    public List<TrackEnvio> getTracks() { return tracks; }
+    public void setTracks(List<TrackEnvio> tracks) { this.tracks = tracks; }
 }

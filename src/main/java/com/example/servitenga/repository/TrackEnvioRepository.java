@@ -10,8 +10,8 @@ import java.util.List;
 public interface TrackEnvioRepository extends JpaRepository<TrackEnvio, Long> {
 
     // Consulta personalizada: recorrido completo de un envio, en orden cronologico
-    List<TrackEnvio> findByEnvioIdOrderByFechaRegistroAsc(Long envioId);
+    List<TrackEnvio> findByEnvio_IdOrderByFechaRegistroAsc(Long envioId);
 
     // Eliminar todos los puntos de un envio (al borrar el envio)
-    void deleteByEnvioId(Long envioId);
+    void deleteByEnvio_Id(Long envioId);
 }

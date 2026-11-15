@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -24,16 +25,16 @@ public class TrackEnvioController {
     @PostMapping
     public ResponseEntity<TrackEnvio> registrar(@PathVariable Long id,
                                                 @Valid @RequestBody UbicacionDTO dto) {
-        return service.registrarTrack(id, dto)
-                .map(punto -> ResponseEntity.status(HttpStatus.CREATED).body(punto))
-                .orElse(ResponseEntity.notFound().build());
+        TrackEnvio punto = service.registrarTrack(id, dto)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Envío no encontrado"));
+        return ResponseEntity.status(HttpStatus.CREATED).body(punto);
     }
 
     // GET - Devuelve el recorrido completo del envio, en orden cronologico (200 OK o 404 Not Found)
     @GetMapping
     public ResponseEntity<List<TrackEnvio>> listar(@PathVariable Long id) {
-        return service.listarTrack(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        List<TrackEnvio> track = service.listarTrack(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Envío no encontrado"));
+        return ResponseEntity.ok(track);
     }
 }

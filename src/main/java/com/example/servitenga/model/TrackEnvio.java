@@ -1,5 +1,7 @@
 package com.example.servitenga.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
@@ -12,9 +14,11 @@ public class TrackEnvio {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Referencia al envio (columna simple, sin relacion JPA)
-    @Column(name = "envio_id", nullable = false)
-    private Long envioId;
+    // Relacion JPA: muchos puntos de tracking pertenecen a un envio
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "envio_id", nullable = false)
+    @JsonIgnore
+    private Envio envio;
 
     @Column(nullable = false)
     private Double latitud;
@@ -29,9 +33,9 @@ public class TrackEnvio {
     public TrackEnvio() {
     }
 
-    public TrackEnvio(Long id, Long envioId, Double latitud, Double longitud, LocalDateTime fechaRegistro) {
+    public TrackEnvio(Long id, Envio envio, Double latitud, Double longitud, LocalDateTime fechaRegistro) {
         this.id = id;
-        this.envioId = envioId;
+        this.envio = envio;
         this.latitud = latitud;
         this.longitud = longitud;
         this.fechaRegistro = fechaRegistro;
@@ -41,8 +45,13 @@ public class TrackEnvio {
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
-    public Long getEnvioId() { return envioId; }
-    public void setEnvioId(Long envioId) { this.envioId = envioId; }
+    public Envio getEnvio() { return envio; }
+    public void setEnvio(Envio envio) { this.envio = envio; }
+
+    @JsonProperty("envioId")
+    public Long getEnvioId() {
+        return envio != null ? envio.getId() : null;
+    }
 
     public Double getLatitud() { return latitud; }
     public void setLatitud(Double latitud) { this.latitud = latitud; }

@@ -1,251 +1,213 @@
 # Servitenga API
 
-API REST de seguimiento de envios con persistencia en MySQL y sistema de geolocalizacion (tracking de envios por latitud y longitud). Construida con Spring Boot 3, JPA e Hibernate.
-
-## Contexto
-
-Servitenga es una empresa de mensajeria y logistica. Esta API permite gestionar envios, persistirlos en una base de datos MySQL y realizar seguimiento (tracking) de cada envio mediante coordenadas geograficas (latitud y longitud) de origen, destino y posicion actual.
+API REST de seguimiento de envíos (mensajería y logística) desarrollada con **Java y Spring Boot**. La solución gestiona envíos y su recorrido geográfico (tracking), persiste información en **MySQL**, implementa una **relación entre entidades con JPA**, consume la **API externa OSRM** para calcular rutas para conductores e incorpora mecanismos básicos de **observabilidad** (Actuator, métricas, Prometheus, logs y trazabilidad).
 
 ## Integrantes
-
 - Hector Mauricio
 
-Actividad desarrollada de forma individual.
+> Actividad desarrollada de forma individual.
 
-## Tecnologias utilizadas
+## Descripción de la solución
+Servitenga permite registrar envíos, consultar su información y almacenar puntos de seguimiento (latitud/longitud) asociados a cada envío (monitoreo del recorrido). La ruta de conducción origen→destino se calcula a partir de las **ciudades de origen y destino** del envío: la aplicación geocodifica ambas ciudades (Nominatim/OpenStreetMap) y consulta el servicio externo **OSRM** para calcular la mejor ruta, exponiéndola en un endpoint orientado al conductor del camión. Además, expone información operativa mediante Spring Boot Actuator y Micrometer.
 
+## Tecnologías utilizadas
 - Java 17
 - Spring Boot 3.3.4
+- Spring Web
 - Spring Data JPA + Hibernate
-- MySQL (conector `mysql-connector-j`)
-- Jakarta Validation (Bean Validation)
+- Spring Boot Validation (Jakarta Validation)
+- Spring Boot Actuator
+- Micrometer + Prometheus Registry
+- MySQL (`mysql-connector-j`)
 - Maven
 
 ## Estructura del proyecto
-
-```
+```text
 servitenga/
 ├── src/main/java/com/example/servitenga/
 │   ├── ServitengaApiApplication.java
+│   ├── config/
+│   │   ├── OsrmHealthIndicator.java      # Indicador de salud personalizado (OSRM)
+│   │   └── TracingFilter.java             # Trazabilidad básica (X-Request-Id / MDC)
 │   ├── controller/
-│   │   ├── EnvioController.java
-│   │   └── TrackEnvioController.java
-│   ├── service/
-│   │   └── EnvioService.java
-│   ├── model/
-│   │   ├── Envio.java            <- Entidad JPA (el envio)
-│   │   └── TrackEnvio.java       <- Entidad JPA (el recorrido)
+│   │   ├── EnvioController.java           # CRUD y búsqueda de envíos
+│   │   ├── TrackEnvioController.java      # Registro y consulta de tracking
+│   │   └── RutaController.java            # Ruta para conductor (consume OSRM)
 │   ├── dto/
 │   │   ├── EnvioRequestDTO.java
+│   │   ├── RutaResponseDTO.java
 │   │   └── UbicacionDTO.java
-│   └── repository/
-│       ├── EnvioRepository.java       <- Extiende JpaRepository
-│       └── TrackEnvioRepository.java  <- Extiende JpaRepository
+│   ├── model/
+│   │   ├── Envio.java                     # Entidad JPA (1)
+│   │   └── TrackEnvio.java                # Entidad JPA (N), relacionada con Envio
+│   ├── repository/
+│   │   ├── EnvioRepository.java
+│   │   └── TrackEnvioRepository.java
+│   └── service/
+│       ├── EnvioService.java              # Lógica de negocio, métricas y logs
+│       └── OsrmRouteService.java          # Cliente/consumo de API externa OSRM
 ├── src/main/resources/
 │   └── application.properties
 ├── pom.xml
-├── servitenga.sql
+├── servitenga.sql                         # Esquema y datos de ejemplo (Pereira -> Medellín)
 └── README.md
 ```
 
-## Persistencia de datos
+## Configuración de MySQL (sin credenciales en el repositorio)
+La conexión se configura mediante variables de entorno (con valores por defecto para desarrollo local). **No publiques contraseñas, tokens ni credenciales en GitHub.**
 
-La persistencia se gestiona mediante **JPA e Hibernate**. La entidad `Envio` se mapea a la tabla `envios` y la entidad `TrackEnvio` a la tabla `track_envios` en MySQL. Al arrancar la aplicacion, Hibernate crea/actualiza automaticamente las tablas (`ddl-auto=update`), por lo que no es necesario ejecutar scripts SQL manualmente.
+Variables soportadas:
+- `DB_URL` (por defecto: `jdbc:mysql://localhost:3306/servitenga?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true`)
+- `DB_USERNAME` (por defecto: `root`)
+- `DB_PASSWORD` (por defecto: vacío)
 
-## Modelo de datos
-
-El modelo esta separado en dos entidades: **`Envio`** (el envio en si) y **`TrackEnvio`** (el recorrido del envio).
-
-### Entidad `Envio` (tabla `envios`)
-
-| Campo | Tipo | Descripcion |
-| --- | --- | --- |
-| `id` | `Long` | Identificador autogenerado (`@Id`, `@GeneratedValue IDENTITY`) |
-| `numeroGuia` | `String` | Generado automaticamente: `LOG-2026-NNN` (unico) |
-| `remitente` | `String` | Obligatorio |
-| `destinatario` | `String` | Obligatorio |
-| `ciudadOrigen` | `String` | Obligatorio |
-| `ciudadDestino` | `String` | Obligatorio |
-| `pesoKg` | `double` | Obligatorio y mayor que 0 |
-| `estado` | `String` | `REGISTRADO` al crear |
-| `fechaCreacion` | `LocalDate` | Fecha del registro |
-| `fechaActualizacion` | `LocalDateTime` | Ultima actualizacion del registro |
-
-> El envio **no** guarda coordenadas. Toda la geolocalizacion vive en `TrackEnvio`.
-
-### Entidad `TrackEnvio` (tabla `track_envios`)
-
-Guarda el **recorrido** del envio: cada punto (latitud, longitud) con su fecha. El **primer** punto corresponde al origen y el **ultimo** al destino.
-
-| Campo | Tipo | Descripcion |
-| --- | --- | --- |
-| `id` | `Long` | Identificador autogenerado (`@Id`, `@GeneratedValue IDENTITY`) |
-| `envioId` | `Long` | Referencia al envio (columna simple, sin relacion JPA) |
-| `latitud` | `Double` | Latitud del punto del recorrido |
-| `longitud` | `Double` | Longitud del punto del recorrido |
-| `fechaRegistro` | `LocalDateTime` | Fecha y hora en que se registro el punto |
-
-## Repositorios
-
-Ambos repositorios extienden `JpaRepository`, heredando automaticamente los metodos CRUD (`save`, `findById`, `findAll`, `deleteById`, `existsById`, `count`).
-
-- `EnvioRepository extends JpaRepository<Envio, Long>` — incluye **consultas personalizadas** por derivacion de nombre: `findByCiudadDestinoIgnoreCase(String)`, `findByEstadoIgnoreCase(String)`, `findByNumeroGuia(String)`, `findByCiudadOrigenIgnoreCase(String)`.
-- `TrackEnvioRepository extends JpaRepository<TrackEnvio, Long>` — incluye `findByEnvioIdOrderByFechaRegistroAsc(Long)` (recorrido ordenado) y `deleteByEnvioId(Long)` (limpieza al borrar el envio).
-
-## Configuracion de MySQL
-
-Edita `src/main/resources/application.properties` con tus credenciales:
-
-```properties
-spring.datasource.url=jdbc:mysql://localhost:3306/servitenga?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true
-spring.datasource.username=root
-spring.datasource.password=TU_PASSWORD
+Ejemplo en macOS/Linux:
+```bash
+export DB_URL="jdbc:mysql://localhost:3306/servitenga?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true"
+export DB_USERNAME="root"
+export DB_PASSWORD="tu_password"
 ```
 
-La base de datos `servitenga` se crea automaticamente si no existe (`createDatabaseIfNotExist=true`).
+Ejemplo en PowerShell (Windows):
+```powershell
+$env:DB_URL="jdbc:mysql://localhost:3306/servitenga?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true"
+$env:DB_USERNAME="root"
+$env:DB_PASSWORD="tu_password"
+```
 
-## Prerequisitos
+> Requisitos: JDK 17+, Maven 3.8+ y MySQL 8.x en ejecución. La base de datos se crea automáticamente si no existe.
 
-- JDK 17 o superior
-- Maven 3.8 o superior
-- MySQL 8.x en ejecucion en `localhost:3306`
-
-## Ejecucion
+## Instrucciones básicas de ejecución
+1. Configura las variables de entorno de MySQL (o usa los valores por defecto si aplican en tu entorno local).
+2. (Opcional) Ejecuta el script `servitenga.sql` para cargar el esquema y el ejemplo de ruta **Pereira -> Medellín**.
+3. Inicia la aplicación:
 
 ```bash
 mvn spring-boot:run
 ```
 
-La API queda disponible en `http://localhost:8080`.
+4. La API quedará disponible en: `http://localhost:8080`
 
-## Endpoints
+## Entidades y relación (JPA)
+La solución implementa **dos entidades relacionadas** con anotaciones JPA:
 
-| Metodo | Ruta | Descripcion | Respuesta |
+### 1. `Envio` (`envios`)
+Representa el envío.
+- `id` (PK, autogenerado)
+- `numeroGuia` (único)
+- `remitente`, `destinatario`
+- `ciudadOrigen`, `ciudadDestino`
+- `pesoKg`, `estado`
+- `fechaCreacion`, `fechaActualizacion`
+- Relación: `@OneToMany(mappedBy = "envio", cascade = CascadeType.ALL, orphanRemoval = true)` hacia `TrackEnvio`
+
+### 2. `TrackEnvio` (`track_envios`)
+Representa un punto del recorrido del envío.
+- `id` (PK, autogenerado)
+- `latitud`, `longitud`
+- `fechaRegistro`
+- Relación: `@ManyToOne(fetch = LAZY, optional = false)` + `@JoinColumn(name = "envio_id")` hacia `Envio`
+
+**Tipo de relación:** `Envio (1) ─── (N) TrackEnvio`  
+Un envío puede tener múltiples puntos de tracking (recorrido) y cada punto pertenece a un único envío. La relación se implementa mediante anotaciones JPA (`@OneToMany`, `@ManyToOne`, `@JoinColumn`) y se refleja en la base de datos mediante la clave foránea `envio_id` en `track_envios`.
+
+## API externa utilizada: OSRM (Open Source Routing Machine)
+Se consume la API pública de ruteo **OSRM** para calcular la mejor ruta de conducción entre la ciudad de origen y la ciudad de destino del envío. Las ciudades se geocodifican previamente con **Nominatim (OpenStreetMap)** para obtener sus coordenadas, y luego se consulta OSRM; el tracking (puntos lat/lon) se mantiene como monitoreo del recorrido y no es requisito para calcular la ruta.
+
+- **Servicio:** OSRM Route Service (servidor demo público)
+- **Base URL configurable:** `OSRM_BASE_URL` (por defecto: `https://router.project-osrm.org`)
+- **Endpoint consumido:** `GET /route/v1/driving/{lon_origen},{lat_origen};{lon_destino},{lat_destino}`
+- **Parámetros usados:** `overview=full`, `geometries=geojson`, `steps=true`
+- **Datos aprovechados en la aplicación:** distancia, duración estimada, pasos/instrucciones y geometría de la ruta (respuesta adaptada en `RutaResponseDTO`).
+- **Autenticación/pago:** no requiere API key ni pago (API pública de demostración).
+- **Manejo controlado de errores:** si no se pueden geocodificar las ciudades de origen/destino, si OSRM no devuelve una ruta válida (`code != Ok` o sin resultados), o si ocurre un fallo de red/servicio, la aplicación responde de forma controlada (`400`/`502`/`503` según el caso) y registra eventos `WARN`/`ERROR` en logs.
+
+> Nota: OSRM calcula rutas sobre datos de OpenStreetMap; es una estimación de ruta (no tráfico en tiempo real tipo Waze).
+
+## Principales endpoints
+
+### Envíos (`/api/envios`)
+| Método | Ruta | Descripción | Respuesta |
 | --- | --- | --- | --- |
-| POST | `/api/envios` | Crea un nuevo envio | `201 Created` |
-| GET | `/api/envios` | Lista todos los envios | `200 OK` |
-| GET | `/api/envios/{id}` | Obtiene un envio por id | `200 OK` / `404 Not Found` |
+| POST | `/api/envios` | Crea un envío | `201 Created` |
+| GET | `/api/envios` | Lista envíos | `200 OK` |
+| GET | `/api/envios/{id}` | Obtiene envío por id | `200 OK` / `404` |
 | GET | `/api/envios/buscar?ciudad=` | Filtra por ciudad de destino | `200 OK` |
 | GET | `/api/envios/buscar?estado=` | Filtra por estado | `200 OK` |
-| PUT | `/api/envios/{id}` | Actualiza un envio existente | `200 OK` / `404 Not Found` |
-| DELETE | `/api/envios/{id}` | Elimina un envio (y su recorrido) | `204 No Content` / `404 Not Found` |
-| POST | `/api/envios/{id}/track` | Registra un punto del recorrido del envio | `201 Created` / `404 Not Found` |
-| GET | `/api/envios/{id}/track` | Devuelve el recorrido completo del envio | `200 OK` / `404 Not Found` |
+| PUT | `/api/envios/{id}` | Actualiza envío | `200 OK` / `404` |
+| DELETE | `/api/envios/{id}` | Elimina envío (y su recorrido) | `204 No Content` / `404` |
 
-## Ejemplos
+### Tracking (`/api/envios/{id}/track`)
+| Método | Ruta | Descripción | Respuesta |
+| --- | --- | --- | --- |
+| POST | `/api/envios/{id}/track` | Registra un punto (lat, lon) del recorrido | `201 Created` / `404` / `400` |
+| GET | `/api/envios/{id}/track` | Lista el recorrido completo (orden cronológico) | `200 OK` / `404` |
 
-### POST `/api/envios`
+### Ruta para conductor (API externa OSRM) (`/api/envios/{id}/ruta`)
+| Método | Ruta | Descripción | Respuesta |
+| --- | --- | --- | --- |
+| GET | `/api/envios/{id}/ruta` | Calcula y devuelve la ruta de conducción origen→destino usando OSRM | `200 OK` / `400` / `404` / `502` / `503` |
+
+**Ejemplo (ruta Pereira -> Medellín, usando el dato de ejemplo):**
+```bash
+curl http://localhost:8080/api/envios/1/ruta
+```
+
+## Ejemplo de datos (Pereira -> Medellín)
+El archivo `servitenga.sql` incluye un envío de ejemplo:
+- **Origen:** Pereira
+- **Destino:** Medellín
+
+La ruta se calcula a partir de las ciudades de origen y destino (geocodificadas automáticamente). Los puntos de tracking se mantienen como monitoreo del recorrido y no son requisito para calcular la ruta.
+
+## Elementos de observabilidad implementados
+
+### Spring Boot Actuator
+Endpoints expuestos en configuración: `health`, `info`, `metrics`, `prometheus`.
+- `GET /actuator/health` — estado de la aplicación (incluye detalles e indicador personalizado)
+- `GET /actuator/metrics` — listado de métricas disponibles
+
+### Métricas personalizadas (Micrometer)
+- `servitenga.envios.creados` — cantidad total de envíos creados
+- `servitenga.tracks.registrados` — cantidad total de puntos de tracking registrados
+- `servitenga.rutas.calculadas` — cantidad total de rutas calculadas mediante OSRM
+
+### Exposición para Prometheus
+- `GET /actuator/prometheus` — métricas en formato compatible con Prometheus (incluye las métricas personalizadas)
+
+### Logs (SLF4J)
+Se registran eventos relevantes en servicio, integración externa y trazabilidad:
+- `INFO`: creación/consulta/actualización de envíos, registro/consulta de tracking, cálculo de rutas y solicitudes entrantes/completadas
+- `WARN`: intentos sobre recursos inexistentes, datos insuficientes para ruta o respuestas no válidas del servicio externo
+- `ERROR`: fallos al consumir la API externa OSRM
+
+### Indicador de salud personalizado y trazabilidad
+- **Health Indicator personalizado (`osrm`)**: verifica la disponibilidad del servicio externo OSRM y se refleja en `/actuator/health`.
+- **Trazabilidad básica (`TracingFilter`)**: asigna o propaga el encabezado `X-Request-Id`, lo incluye en la respuesta y en el contexto de logs (MDC), registrando inicio/fin y duración de cada solicitud.
+
+## Instrucciones para consultar Actuator
+Con la aplicación en ejecución:
 
 ```bash
-curl -X POST http://localhost:8080/api/envios \
-  -H "Content-Type: application/json" \
-  -d '{
-    "remitente": "Juan Perez",
-    "destinatario": "Ana Gomez",
-    "ciudadOrigen": "Bogota",
-    "ciudadDestino": "Cali",
-    "pesoKg": 3.4
-  }'
+# Estado de salud (incluye indicador personalizado OSRM y detalles)
+curl http://localhost:8080/actuator/health
+
+# Listado de métricas
+curl http://localhost:8080/actuator/metrics
+
+# Métrica personalizada específica (ejemplos)
+curl http://localhost:8080/actuator/metrics/servitenga.envios.creados
+curl http://localhost:8080/actuator/metrics/servitenga.tracks.registrados
+curl http://localhost:8080/actuator/metrics/servitenga.rutas.calculadas
+
+# Métricas en formato Prometheus
+curl http://localhost:8080/actuator/prometheus
 ```
-
-Respuesta `201 Created`:
-
-```json
-{
-  "id": 1,
-  "numeroGuia": "LOG-2026-001",
-  "remitente": "Juan Perez",
-  "destinatario": "Ana Gomez",
-  "ciudadOrigen": "Bogota",
-  "ciudadDestino": "Cali",
-  "pesoKg": 3.4,
-  "estado": "REGISTRADO",
-  "fechaCreacion": "2026-10-30",
-  "fechaActualizacion": "2026-10-30T10:30:00"
-}
-```
-
-### POST `/api/envios/{id}/track` (Registrar punto del recorrido)
-
-Registra un punto (latitud, longitud) en el recorrido del envio. Se puede llamar varias veces para ir construyendo el track.
-
-```bash
-curl -X POST http://localhost:8080/api/envios/1/track \
-  -H "Content-Type: application/json" \
-  -d '{"latitud": 4.5709, "longitud": -74.2973}'
-```
-
-Respuesta `201 Created`:
-
-```json
-{
-  "id": 1,
-  "envioId": 1,
-  "latitud": 4.5709,
-  "longitud": -74.2973,
-  "fechaRegistro": "2026-10-30T11:05:00"
-}
-```
-
-Si el envio no existe responde `404 Not Found`, y si falta `latitud` o `longitud` responde `400 Bad Request`.
-
-### GET `/api/envios/{id}/track` (Consultar el recorrido)
-
-```bash
-curl http://localhost:8080/api/envios/1/track
-```
-
-Respuesta `200 OK` con el recorrido ordenado por fecha:
-
-```json
-[
-  { "id": 1, "envioId": 1, "latitud": 4.5709, "longitud": -74.2973, "fechaRegistro": "2026-10-30T11:05:00" },
-  { "id": 2, "envioId": 1, "latitud": 4.15, "longitud": -75.1, "fechaRegistro": "2026-10-30T12:20:00" }
-]
-```
-
-Si el envio no existe responde `404 Not Found`.
-
-### GET `/api/envios/buscar?ciudad=Cali`
-
-```bash
-curl "http://localhost:8080/api/envios/buscar?ciudad=Cali"
-```
-
-### PUT `/api/envios/{id}`
-
-```bash
-curl -X PUT http://localhost:8080/api/envios/1 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "remitente": "Juan Perez",
-    "destinatario": "Ana Gomez",
-    "ciudadOrigen": "Bogota",
-    "ciudadDestino": "Medellin",
-    "pesoKg": 3.4
-  }'
-```
-
-### DELETE `/api/envios/{id}`
-
-```bash
-curl -X DELETE http://localhost:8080/api/envios/1
-```
-
-Respuesta `204 No Content`.
-
-## Evidencia de persistencia
-
-1. Crea un envio con `POST /api/envios`.
-2. Consultalo luego con `GET /api/envios/{id}`: el registro sigue disponible porque esta almacenado en MySQL.
-3. Reinicia la aplicacion y vuelve a consultar: los datos persisten.
 
 ## Uso de inteligencia artificial
+Se utilizó inteligencia artificial como apoyo durante el desarrollo de la actividad (consulta y verificación técnica), incluyendo orientación para:
+- Modelar la relación JPA `@OneToMany/@ManyToOne` entre `Envio` y `TrackEnvio`.
+- Integrar el consumo de la API externa OSRM con `RestClient` y definir manejo controlado de errores.
+- Configurar observabilidad con Spring Boot Actuator, Micrometer/Prometheus, métricas personalizadas, logs y mecanismos de salud/trazabilidad.
 
-Se utilizo inteligencia artificial (asistente de codigo) como apoyo durante el desarrollo:
-
-- **Para que se utilizo:** revisar la estructura de las consultas personalizadas en Spring Data JPA, verificar las anotaciones JPA necesarias para la entidad y revisar la configuracion del datasource de MySQL.
-- **Tipo de ayuda solicitada:** explicaciones sobre el funcionamiento de `JpaRepository` y sugerencias de implementacion para el mapeo de la entidad y el tracking de ubicacion.
-- **Adaptacion:** las sugerencias fueron adaptadas al contexto del proyecto (envios y geolocalizacion) y no se copiaron literalmente.
-- **Verificacion:** cada respuesta se comprobo ejecutando los endpoints con `curl` y consultando directamente la tabla `envios` en MySQL para confirmar que los datos persistian correctamente.
-
+Las sugerencias fueron revisadas, adaptadas al contexto del proyecto y verificadas ejecutando la aplicación, probando endpoints (`curl`) y consultando los endpoints de Actuator y la base de datos MySQL.
